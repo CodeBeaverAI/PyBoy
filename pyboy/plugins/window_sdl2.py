@@ -247,6 +247,12 @@ class WindowSDL2(PyBoyWindowPlugin):
 
             sdl2.SDL_QueueAudio(self.sound_device, self.audiobuffer_p, length)
 
+    def paused(self, pause):
+        if pause:
+            sdl2.SDL_PauseAudioDevice(self.sound_device, 1)
+        else:
+            sdl2.SDL_PauseAudioDevice(self.sound_device, 0)
+
     def enabled(self):
         if self.pyboy_argv.get("window") in ("SDL2", None):
             if not sdl2:
