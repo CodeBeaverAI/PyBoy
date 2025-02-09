@@ -182,7 +182,6 @@ def test_tiles(default_rom):
 
 def test_tiles_cgb(any_rom_cgb):
     pyboy = PyBoy(any_rom_cgb, window="null")
-    pyboy.tick(BOOTROM_FRAMES_UNTIL_LOGO, False)
 
     tile = pyboy.tilemap_window.tile(0, 0)
     assert isinstance(tile, Tile)
