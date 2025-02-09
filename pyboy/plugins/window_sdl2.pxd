@@ -5,7 +5,7 @@
 
 cimport pyboy.utils
 from pyboy.plugins.base_plugin cimport PyBoyWindowPlugin
-
+from pyboy.core.mb cimport Motherboard
 import cython
 
 cimport cython
@@ -32,6 +32,11 @@ cdef class WindowSDL2(PyBoyWindowPlugin):
     cdef object _window
     cdef object _sdlrenderer
     cdef object _sdltexturebuffer
+
+    cdef int64_t sound_device
+    cdef object audiobuffer_p
+
+    cdef void init_audio(self, Motherboard) noexcept
 
     @cython.locals(now=int64_t, delay=int64_t)
     cdef bint frame_limiter(self, int) noexcept
