@@ -23,7 +23,7 @@ logger = pyboy.logging.get_logger(__name__)
 ROWS, COLS = 144, 160
 
 SOUND_DESYNC_THRESHOLD = 4
-
+SOUND_PREBUFFER_THRESHOLD = 2
 
 # https://wiki.libsdl.org/SDL_Scancode#Related_Enumerations
 # fmt: off
@@ -187,13 +187,15 @@ class WindowSDL2(PyBoyWindowPlugin):
     def init_audio(self, mb):
         if mb.sound.enabled and mb.sound.emulate:
             if sdl2.SDL_Init(sdl2.SDL_INIT_AUDIO) >= 0:
-                spec_want = sdl2.SDL_AudioSpec(self.mb.sound.sample_rate, sdl2.AUDIO_S8, 2, 128)
-                spec_have = sdl2.SDL_AudioSpec(0, 0, 0, 0)
-                self.sound_device = sdl2.SDL_OpenAudioDevice(None, 0, spec_want, spec_have, 0)
+                # NOTE: We have to keep spec variables alive to avoid segfault
+                self.spec_want = sdl2.SDL_AudioSpec(self.mb.sound.sample_rate, sdl2.AUDIO_S8, 2, 128)
+                self.spec_have = sdl2.SDL_AudioSpec(0, 0, 0, 0)
+                self.sound_device = sdl2.SDL_OpenAudioDevice(None, 0, self.spec_want, self.spec_have, 0)
 
                 if self.sound_device > 1:
-                    sdl2.SDL_PauseAudioDevice(self.sound_device, 0)
-                    assert spec_have.freq == self.mb.sound.sample_rate  # TODO: Extrapolate what we have
+                    assert self.spec_have.freq == self.mb.sound.sample_rate
+                    assert self.spec_have.format == sdl2.AUDIO_S8
+                    assert self.spec_have.channels == 2
                     self.sound_support = True
 
                     if cython_compiled:
@@ -201,6 +203,7 @@ class WindowSDL2(PyBoyWindowPlugin):
                     else:
                         audiobuffer, _ = self.sound.audiobuffer.buffer_info()
                     self.audiobuffer_p = cast(c_void_p(audiobuffer), POINTER(c_ubyte))
+                    sdl2.SDL_PauseAudioDevice(self.sound_device, 0)
                 else:
                     self.sound_support = False
                     logger.warning("SDL_OpenAudioDevice failed: %s", sdl2.SDL_GetError().decode())
@@ -211,6 +214,9 @@ class WindowSDL2(PyBoyWindowPlugin):
             self.sound_support = False
 
     def set_title(self, title):
+        # if self.sound_support:
+        #     queued_bytes = sdl2.SDL_GetQueuedAudioSize(self.sound_device)
+        #     title += f" {queued_bytes}"
         sdl2.SDL_SetWindowTitle(self._window, title.encode())
 
     def handle_events(self, events):
@@ -224,6 +230,18 @@ class WindowSDL2(PyBoyWindowPlugin):
                 self.fullscreen ^= True
         return events
 
+    def frame_limiter(self, speed):
+        if self.sound_support and speed == 1:
+            queued_bytes = sdl2.SDL_GetQueuedAudioSize(self.sound_device)
+            frames_buffered = queued_bytes / (self.sound.samples_per_frame * 2.0)
+            if frames_buffered > 2:
+                # logger.debug("%d %f %f", queued_bytes, frames_buffered, (frames_buffered-float(2)) * (1./60.))
+                # Sleep for the excees of the 2 frames of buffer we have
+                time.sleep(min(1 / 60.0, (frames_buffered - float(2)) * (1.0 / 60.0)))
+            return True
+        else:
+            return PyBoyWindowPlugin.frame_limiter(self, speed)
+
     def post_tick(self):
         sdl2.SDL_UpdateTexture(self._sdltexturebuffer, None, self.renderer._screenbuffer_ptr, COLS * 4)
         sdl2.SDL_RenderCopy(self._sdlrenderer, self._sdltexturebuffer, None, None)
@@ -231,19 +249,21 @@ class WindowSDL2(PyBoyWindowPlugin):
         sdl2.SDL_RenderClear(self._sdlrenderer)
 
         if self.sound_support:
-            # NOTE: Fixes audio after running more than 1x realtime
             queued_bytes = sdl2.SDL_GetQueuedAudioSize(self.sound_device)
-            if queued_bytes > 2 * self.mb.sound.samples_per_frame * SOUND_DESYNC_THRESHOLD:
+
+            # NOTE: Fixes audio after running more than 1x realtime
+            if queued_bytes > 2 * self.mb.sound.samples_per_frame * (
+                SOUND_PREBUFFER_THRESHOLD + SOUND_DESYNC_THRESHOLD
+            ):
+                logger.debug(
+                    "Sound device buffer drifting above threshold (%s frames), resetting buffer", SOUND_DESYNC_THRESHOLD
+                )
                 sdl2.SDL_ClearQueuedAudio(self.sound_device)
 
             length = self.sound.audiobuffer_head
             sdl2.SDL_MixAudioFormat(
                 self.audiobuffer_p, self.audiobuffer_p, sdl2.AUDIO_S8, length, self.mb.sound.volume * 128 // 100
             )
-
-            # audiobuffer = array("b", self.sound.get_buffer())
-            # self.audiobuffer_p = c_void_p(audiobuffer.buffer_info()[0])
-            # sdl2.SDL_MixAudioFormat(cast(self.audiobuffer_p, POINTER(c_ubyte)), cast(self.audiobuffer_p, POINTER(c_ubyte)), sdl2.AUDIO_S8, len(audiobuffer), self.mb.sound.volume*128//100)
 
             sdl2.SDL_QueueAudio(self.sound_device, self.audiobuffer_p, length)
 
