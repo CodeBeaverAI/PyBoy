@@ -169,6 +169,7 @@ def mooneye_dir():
 @pytest.fixture(scope="session")
 def magen_test_file():
     path = extra_test_rom_dir / Path("magen_test2.gb")
+
     with FileLock(path.with_suffix(".lock")):
         if not os.path.isfile(path):
             print(url_open("https://pyboy.dk/mirror/LICENSE.magen_test.txt"))
