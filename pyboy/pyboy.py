@@ -74,8 +74,8 @@ class PyBoy:
         scale=defaults["scale"],
         symbols=None,
         bootrom=None,
-        sound=0,
-        sound_emulated=True,
+        sound=True,
+        sound_volume=100,
         sound_sample_rate=None,
         cgb=None,
         gameshark=None,
@@ -86,12 +86,8 @@ class PyBoy:
         **kwargs,
     ):
         """
-        PyBoy is loadable as an object in Python. This means, it can be initialized from another script, and be
-        controlled and probed by the script. It is supported to spawn multiple emulators, just instantiate the class
-        multiple times.
-
         A range of methods are exposed, which should allow for complete control of the emulator. Please open an issue on
-        GitHub, if other methods are needed for your projects. Take a look at the files in `examples/` for a crude
+        GitHub, if other methods are needed for your projects. Take a look at the files in `examples/` for crude
         "bots", which interact with the game.
 
         Only the `gamerom` argument is required.
@@ -106,6 +102,10 @@ class PyBoy:
 
         ```
 
+        NOTE: `sound` used to be disabled, but is now enabled by default. `False` will completely disable the sound
+        emulation. This is for advanced users, and is not generally advised. `sound_volume` is only a hint for the
+        window to set the desired volume (doesn't apply to API).
+
         Args:
             gamerom (str): Filepath to a game-ROM for Game Boy or Game Boy Color.
 
@@ -114,8 +114,9 @@ class PyBoy:
             * scale (int): Window scale factor. Doesn't apply to API.
             * symbols (str): Filepath to a .sym file to use. If unsure, specify `None`.
             * bootrom (str): Filepath to a boot-ROM to use. If unsure, specify `None`.
-            * sound (bool | int): Enable sound and set volume.
-            * sound_emulated (bool): Enable sound emulation without any output. Used for compatibility.
+            * sound (bool): Enable or disable sound emulation (advanced).
+            * sound_volume (int): Set sound volume between 0 and 100.
+            * sound_sample_rate (int): Force the sample rate for sound (advanced)
             * cgb (bool): Forcing Game Boy Color mode.
             * gameshark (str): GameShark codes to apply.
             * no_input (bool): Disable all user-input (mostly for autonomous testing)
@@ -177,11 +178,7 @@ class PyBoy:
         self.symbols_file = symbols
         self._load_symbols()
 
-        # Backwards compatibility
-        if isinstance(sound, bool):
-            sound = 100 if sound else 0
-
-        if not (0 <= sound <= 100):
+        if not (0 <= sound_volume <= 100):
             raise PyBoyInvalidInputException("Sound volume has to be between 0 and 100.")
 
         self.mb = Motherboard(
@@ -190,7 +187,7 @@ class PyBoy:
             color_palette,
             cgb_color_palette,
             sound,
-            sound_emulated,
+            sound_volume,
             sound_sample_rate,
             cgb,
             randomize=randomize,
@@ -440,14 +437,15 @@ class PyBoy:
 
         self.initialized = True
 
-    def _tick(self, render):
+    def _tick(self, render, sound):
         if self.stopped:
             return False
 
         self._handle_events(self.events)
         if not self.paused:
             self.gameshark.tick()
-            self.__rendering(render)
+            self.mb.lcd.disable_renderer = not render
+            self.mb.sound.disable_sampling = not sound
             # Reenter mb.tick until we eventually get a clean exit without breakpoints
             self.mb.lcd.frame_done = False
             self.mb.sound.clear_buffer()  # TODO: Only sample on last frame
@@ -478,7 +476,7 @@ class PyBoy:
 
         return not self.quitting
 
-    def tick(self, count=1, render=True):
+    def tick(self, count=1, render=True, sound=True):
         """
         Progresses the emulator ahead by `count` frame(s).
 
@@ -517,6 +515,7 @@ class PyBoy:
         Args:
             count (int): Number of ticks to process
             render (bool): Whether to render an image for this tick
+            sound (bool): Whether to fill the sound buffer for this tick
         Returns
         -------
         (True or False):
@@ -529,7 +528,7 @@ class PyBoy:
         with cython.nogil:
             while count != 0:
                 _render = render and count == 1  # Only render on last tick to improve performance
-                running = self._tick(_render)
+                running = self._tick(_render, sound)
                 count -= 1
         t_tick = time.perf_counter_ns()
         self._post_tick()
@@ -1082,12 +1081,6 @@ class PyBoy:
         if target_speed > 5:
             logger.warning("The emulation speed might not be accurate when speed-target is higher than 5")
         self.target_emulationspeed = target_speed
-
-    def __rendering(self, value):
-        """
-        Disable or enable rendering
-        """
-        self.mb.lcd.disable_renderer = not value
 
     def _is_cpu_stuck(self):
         return self.mb.cpu.is_stuck

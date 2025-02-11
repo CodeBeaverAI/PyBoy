@@ -123,7 +123,7 @@ gameboy_type_parser.add_argument(
 
 sound_parser = parser.add_mutually_exclusive_group()
 
-sound_parser.add_argument("--sound", nargs="?", default=0, const=100, type=valid_volume, help="Set sound volume 0-100")
+sound_parser.add_argument("--sound", action="store_true", help="Deprecated setting. See '--no-sound-emulation'")
 # NOTE: Inverted logic on variable
 sound_parser.add_argument(
     "--no-sound-emulation",
@@ -131,6 +131,12 @@ sound_parser.add_argument(
     action="store_false",
     dest="sound_emulated",
     help="Disables sound emulation (not just muted!)",
+)
+parser.add_argument(
+    "--sound-volume",
+    default=100,
+    type=valid_volume,
+    help="Set sound volume 0-100",
 )
 parser.add_argument(
     "--sound-sample-rate",

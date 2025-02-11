@@ -38,7 +38,7 @@ cdef class PyBoyWindowPlugin(PyBoyPlugin):
     cdef int[2] _scaledresolution
     cdef bint enable_title
     cdef Renderer renderer
-    cdef Sound sound
+    cdef readonly Sound sound
 
     cdef int64_t _ftime
     cdef bint frame_limiter(self, int) noexcept

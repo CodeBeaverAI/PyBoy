@@ -26,6 +26,7 @@ class ScreenRecorder(PyBoyPlugin):
 
         self.recording = False
         self.frames = []
+        # self.sound_frames = []
 
     def handle_events(self, events):
         for event in events:
@@ -41,11 +42,9 @@ class ScreenRecorder(PyBoyPlugin):
     def post_tick(self):
         # Plugin: Screen Recorder
         if self.recording:
-            self.add_frame(self.pyboy.screen.image.copy())
-
-    def add_frame(self, frame):
-        # Pillow makes artifacts in the output, if we use 'RGB', which is PyBoy's default format
-        self.frames.append(frame)
+            self.frames.append(self.pyboy.screen.image.copy())
+            # if self.mb.sound.enabled:
+            #     self.frames.append(self.pyboy.sound.ndarray.copy())
 
     def save(self, path=None, fps=60):
         logger.info("ScreenRecorder saving...")
@@ -57,15 +56,18 @@ class ScreenRecorder(PyBoyPlugin):
             path = os.path.join(directory, time.strftime(f"{self.pyboy.cartridge_title}-%Y.%m.%d-%H.%M.%S.gif"))
 
         if len(self.frames) > 0:
-            self.frames[0].save(
-                path,
-                save_all=True,
-                interlace=False,
-                loop=0,
-                optimize=True,
-                append_images=self.frames[1:],
-                duration=int(round(1000 / fps, -1)),
-            )
+            if self.mb.sound.enabled:
+                pass
+            else:
+                self.frames[0].save(
+                    path,
+                    save_all=True,
+                    interlace=False,
+                    loop=0,
+                    optimize=True,
+                    append_images=self.frames[1:],
+                    duration=int(round(1000 / fps, -1)),
+                )
 
             logger.info("Screen recording saved in {}".format(path))
         else:

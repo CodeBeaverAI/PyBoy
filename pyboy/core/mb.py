@@ -25,7 +25,7 @@ class Motherboard:
         color_palette,
         cgb_color_palette,
         sound_enabled,
-        sound_emulated,
+        sound_volume,
         sound_sample_rate,
         cgb,
         randomize=False,
